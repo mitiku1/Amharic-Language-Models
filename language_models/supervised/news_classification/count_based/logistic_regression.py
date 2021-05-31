@@ -13,7 +13,7 @@ from sklearn.metrics import classification_report
 from sklearn.feature_extraction.text import TfidfVectorizer
 from torch import nn
 import torch
-
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 normalization_mapping = {'[ሃኅኃሐሓኻ]': 'ሀ', '[ሑኁዅ]': 'ሁ', '[ኂሒኺ]': 'ሂ', 
                          '[ኌሔዄ]': 'ሄ', '[ሕኅ]': 'ህ', '[ኆሖኾ]': 'ሆ', '[ሠ]': 'ሰ',
@@ -53,6 +53,8 @@ def train_epoch(model, loader, optimizer, criterion):
     corrects = 0
     total = 0
     for inputs, labels in loader:
+        inputs = inputs.to(device)
+        labels = labels.to(device)
         outputs = model(inputs)
         
         loss = criterion(outputs, labels)
@@ -75,6 +77,8 @@ def evaluate_model(model, loader, criterion):
     total = 0
     with torch.no_grad():
         for inputs, labels in loader:
+            inputs = inputs.to(device)
+            labels = labels.to(device)
             outputs = model(inputs)
             
             loss = criterion(outputs, labels)
@@ -131,6 +135,7 @@ def main():
     model = nn.Sequential(
         nn.Linear(X.shape[1], len(unique_labels))
     )
+    model = model.to(device)
     optimizer = torch.optim.SGD(model.parameters(),lr = 1e-3, momentum=0.9)
     criterion = nn.CrossEntropyLoss()
     for i in range(EPOCHS):
