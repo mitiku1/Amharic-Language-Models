@@ -54,7 +54,7 @@ def train_epoch(model, loader, optimizer, criterion):
     total = 0
     for inputs, labels in loader:
         inputs = inputs.to(device).float()
-        labels = labels.to(device).float()
+        labels = labels.to(device)
         outputs = model(inputs)
         
         loss = criterion(outputs, labels)
@@ -78,7 +78,7 @@ def evaluate_model(model, loader, criterion):
     with torch.no_grad():
         for inputs, labels in loader:
             inputs = inputs.to(device).float()
-            labels = labels.to(device).float()
+            labels = labels.to(device)
             outputs = model(inputs)
             
             loss = criterion(outputs, labels)
