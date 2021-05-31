@@ -44,7 +44,7 @@ class NewsClassificationDataset(Dataset):
         self.labels = labels
     def __len__(self):
         return len(self.labels)
-    def __getitme__(self, index):
+    def __getitem__(self, index):
         return self.features[index], self.labels[index]
     
 def train_epoch(model, loader, optimizer, criterion):
