@@ -141,7 +141,7 @@ def main():
     for i in range(EPOCHS):
         train_loss, train_acc = train_epoch(model, trainloader, optimizer, criterion)
         val_loss, val_acc = evaluate_model(model, validloader, criterion)
-        print("Epoch: {}/{} train-loss:{} train-acc:{} val-loss:{} valid-acc:{}".format(train_loss, train_acc, val_loss, val_acc))
+        print("Epoch: {}/{} train-loss:{} train-acc:{} val-loss:{} valid-acc:{}".format(i+1, EPOCHS, train_loss, train_acc, val_loss, val_acc))
     
     # y_pred = classifier.predict(X_test)
 
