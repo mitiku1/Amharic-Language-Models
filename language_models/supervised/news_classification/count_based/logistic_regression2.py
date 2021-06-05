@@ -43,7 +43,7 @@ def train_epoch(model, loader, optimizer, criterion):
     losses = 0
     corrects = 0
     total = 0
-    for inputs, labels in tqdm.tqdm(loader):
+    for inputs, labels in tqdm.auto.tqdm(loader):
         inputs = inputs.to(device).float()
         labels = labels.to(device)
         outputs = model(inputs)
@@ -67,7 +67,7 @@ def evaluate_model(model, loader, criterion):
     corrects = 0
     total = 0
     with torch.no_grad():
-        for inputs, labels in tqdm.tqdm(loader):
+        for inputs, labels in tqdm.auto.tqdm(loader):
             inputs = inputs.to(device).float()
             labels = labels.to(device)
             outputs = model(inputs)
