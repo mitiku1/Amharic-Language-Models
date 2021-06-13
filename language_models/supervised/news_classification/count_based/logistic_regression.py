@@ -124,7 +124,7 @@ def main():
     
     X_train, X_valid, y_train, y_valid = train_test_split(X, labels,test_size=0.2, random_state = 1234)
 
-    print("Training naive bayes")
+    print("Training logistic regression")
     
     trainset = NewsClassificationDataset(X_train, y_train)
     validset = NewsClassificationDataset(X_valid, y_valid)
@@ -141,7 +141,7 @@ def main():
     for i in range(EPOCHS):
         train_loss, train_acc = train_epoch(model, trainloader, optimizer, criterion)
         val_loss, val_acc = evaluate_model(model, validloader, criterion)
-        print("Epoch: {}/{} train-loss:{} train-acc:{} val-loss:{} valid-acc:{}".format(i+1, EPOCHS, train_loss, train_acc, val_loss, val_acc))
+        print("Epoch: {}/{} train-loss:{:.4f} train-acc:{:.4f} val-loss:{:.4f} valid-acc:{:.4f}".format(i+1, EPOCHS, train_loss, train_acc, val_loss, val_acc))
     
     # y_pred = classifier.predict(X_test)
 
