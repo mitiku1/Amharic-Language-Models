@@ -46,7 +46,7 @@ class TransformerModel(nn.Module):
         self.encoder = TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.token_emb = TokenEmbedding(vocab_size, emb_size)
         self.positional_encoding = PositionalEncoding(emb_size, dropout)
-        self.linear = nn.Linear(128, num_classes)
+        self.linear = nn.Linear(512, num_classes)
         self.pool = nn.AdaptiveAvgPool1d(1)
     def forward(self, inputs, attention_masks=None, padding_mask = None):
         inputs_emb = self.positional_encoding(self.token_emb(inputs))
@@ -98,7 +98,7 @@ def train_epoch(model, loader, optimizer, criterion):
         inputs["attention_mask"] = inputs["attention_mask"].to(device).float()
         
         labels = labels.to(device)
-        outputs = model(inputs["input_ids"])
+        outputs = model(inputs["input_ids"], inputs["attention_mask"])
         
         loss = criterion(outputs, labels)
         losses += loss.item() * labels.size(0)
@@ -127,7 +127,7 @@ def evaluate_model(model, loader, criterion):
             inputs["attention_mask"] = inputs["attention_mask"].to(device).float()
        
             labels = labels.to(device)
-            outputs = model(inputs["input_ids"])
+            outputs = model(inputs["input_ids"], inputs["attention_mask"])
             
             loss = criterion(outputs, labels)
             losses += loss.item() * labels.size(0)
@@ -158,23 +158,23 @@ def main():
     data_path = "An-Amharic-News-Text-classification-Dataset/data/Amharic News Dataset.csv"
     df = pd.read_csv(data_path)
     df = df.dropna(subset=["article", "category"])
-    tokenizer  = AmTokenizer(10000, 5 , "byte_bpe", max_length=128)
+    tokenizer  = AmTokenizer(10000, 5 , "byte_bpe", max_length=512)
     train_df, valid_df = train_test_split(df, test_size = 0.2, random_state = 1234)
     
     trainset = NewsClassificationDatataset(train_df, tokenizer)
     validset = NewsClassificationDatataset(valid_df, tokenizer, label_mapping=trainset.label_mapping)
     
     
-    trainloader = DataLoader(trainset, batch_size = 256, shuffle=True)
-    validloader = DataLoader(validset, batch_size = 256, shuffle=False)
+    trainloader = DataLoader(trainset, batch_size = 64, shuffle=True)
+    validloader = DataLoader(validset, batch_size = 64, shuffle=False)
     
     model = TransformerModel(num_classes= len(trainset.label_mapping))
-    IPython.embed()
-    # model = model.to(device)
-    # optimizer = torch.optim.SGD(model.parameters(),lr = 0.1)
-    # criterion = nn.CrossEntropyLoss()
+    # IPython.embed()
+    model = model.to(device)
+    optimizer = torch.optim.SGD(model.parameters(),lr = 0.0001, momentum=0.9)
+    criterion = nn.CrossEntropyLoss()
     
-    # train_history, valid_history = train(model, trainloader, validloader, optimizer, criterion, 100)
+    train_history, valid_history = train(model, trainloader, validloader, optimizer, criterion, 100)
     
 if __name__ == '__main__':
     main()
