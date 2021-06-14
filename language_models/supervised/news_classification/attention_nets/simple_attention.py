@@ -9,192 +9,57 @@ from torch.nn import functional as F
 from torch import nn
 import torch.nn.functional as F
 import tqdm
+import math
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
+class PositionalEncoding(nn.Module):
+    def __init__(self, emb_size, dropout, maxlen=5000):
+        super().__init__()
+        den = torch.exp(- torch.arange(0, emb_size, 2) * math.log(10000) / emb_size)
+        pos = torch.arange(0, maxlen).reshape(maxlen, 1)
+        pos_embedding = torch.zeros((maxlen, emb_size))
+        pos_embedding[:, 0::2] = torch.sin(pos * den)
+        pos_embedding[:, 1::2] = torch.cos(pos * den)
+        pos_embedding = pos_embedding.unsqueeze(-2)
 
-def scaled_dot_attention(Q, K, V):
-    dk = Q.size(-1)
-    attention = torch.div(torch.bmm(Q, K.transpose(1, 2)), torch.pow(torch.tensor(dk), 0.5))
-    attention = F.softmax(attention, dim=-1)
-    output = torch.bmm(attention, V)
-    return output
-def positional_encoding(model_dim, seq_len):
-    p = torch.arange(seq_len).view(1, -1, 1).to(device)
-    d = torch.arange(model_dim).view(1, 1, -1).to(device)
-    phase = p / 1e4**(d / model_dim)
-    
-    return torch.where(d.long()%2 == 0, torch.sin(phase), torch.cos(phase))
-    
-class FeedForward(nn.Module):
-    def __init__(self, dim, feature_dim):
-        super().__init__()
-        self.l1 = nn.Linear(dim, feature_dim)
-        self.l2 = nn.Linear(feature_dim, dim)
-    def forward(self, inputs):
-        out = F.relu(self.l1(inputs))
-        out = self.l2(out)
-        return out
-class Residual(nn.Module):
-    def __init__(self, dim, sublayer, dropout=0.1):
-        super().__init__()
-        self.sublayer = sublayer
-        self.norm = nn.LayerNorm(dim)
         self.dropout = nn.Dropout(dropout)
-    def forward(self, *inputs):
-        out = self.sublayer(*inputs)
-        out = self.dropout(out)
-        out = self.norm(inputs[-1] + out)
-        
-        return out
-class EncoderLayer(nn.Module):
-    def __init__(self, dim = 512, 
-                 num_heads =  8, 
-                 forward_dim = 2048,
-                 dropout = 0.1
-                 ):
-        super().__init__()
-        key_dim = value_dim = dim // num_heads
-        self.attention = Residual(
-            dim = dim,
-            sublayer= MultiHeadAttention(num_heads, dim, key_dim, value_dim ),
-            dropout= dropout
-        )
-        
-        self.feedforward = Residual(
-            dim = dim, sublayer= FeedForward(dim, forward_dim),dropout= dropout
-        )
-    def forward(self, inputs):
-        src = self.attention(inputs, inputs, inputs)
-        return self.feedforward(src)
-class TransformerEncoder(nn.Module):
-    def __init__(self, 
-                 num_layers=6,
-                 dim = 512, 
-                 num_heads =  8, 
-                 forward_dim = 2048,
-                 dropout = 0.1
-                 ):
-        super().__init__()
-        
-        self.layers = nn.ModuleList([
-            EncoderLayer(dim = dim, num_heads=num_heads, forward_dim=forward_dim, dropout=dropout) for _ in range(num_layers)
-        ])
-    def forward(self, inputs):
-        seq_len, dim = inputs.size(1), inputs.size(2)
-        outputs = inputs + positional_encoding(dim, seq_len)
-        for layer in self.layers:
-            outputs  = layer(outputs)
-        return outputs
+        self.register_buffer('pos_embedding', pos_embedding)
+    def forward(self, token_embedding):
+        return self.dropout(token_embedding +
+                            self.pos_embedding[:token_embedding.size(0),:])
+class TokenEmbedding(nn.Module):
+    def __init__(self, vocab_size: int, emb_size):
+        super(TokenEmbedding, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, emb_size)
+        self.emb_size = emb_size
+    def forward(self, tokens):
+        return self.embedding(tokens.long()) * math.sqrt(self.emb_size)
 
-class DecoderLayer(nn.Module):
-    def __init__(self, 
-                 dim = 512, 
-                 num_heads =  8, 
-                 forward_dim = 2048,
-                 dropout = 0.1
-                 ):
+class TransformerModel(nn.Module):
+    def __init__(self, num_layers = 6, emb_size = 512, vocab_size = 10_000, nhead=8, dim_feedforward=512, dropout=0.1, num_classes = 6):
         super().__init__()
-        key_dim = value_dim = dim // num_heads
-        self.attention_1 = Residual(
-            dim = dim,
-            sublayer= MultiHeadAttention(num_heads, dim, key_dim, value_dim ),
-            dropout= dropout
-        )
         
-        self.attention_2 = Residual(
-            dim = dim,
-            sublayer= MultiHeadAttention(num_heads, dim, key_dim, value_dim ),
-            dropout= dropout
-        )
-        
-        self.feedforward = Residual(
-            dim = dim, sublayer= FeedForward(dim, forward_dim),dropout= dropout
-        )
-    def forward(self, targets, memory):
-        out = self.attention_1(targets, targets, targets)
-        out = self.attention_2(out, out, memory)
-        return self.feedforward(out)
-    
+        encoder_layer = TransformerEncoderLayer(d_model=emb_size, nhead=nhead, dim_feedforward = dim_feedforward)
+        self.encoder = TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.token_emb = TokenEmbedding(vocab_size, emb_size)
+        self.positional_encoding = PositionalEncoding(emb_size, dropout)
+        self.linear = nn.Linear(128, num_classes)
+        self.pool = nn.AdaptiveAvgPool1d(1)
+    def forward(self, inputs, attention_masks=None, padding_mask = None):
+        inputs_emb = self.positional_encoding(self.token_emb(inputs))
 
-class TransformerDecoder(nn.Module):
-    def __init__(self, 
-                 num_layers=6,
-                 dim = 512, 
-                 num_heads =  8, 
-                 forward_dim = 2048,
-                 dropout = 0.1
-                 ):
-        super().__init__()
+        memory = self.encoder(inputs_emb, attention_masks, padding_mask)
+        memory = F.relu(self.pool(memory).squeeze(-1))
         
-        self.layers = nn.ModuleList([
-            DecoderLayer(dim = dim, num_heads=num_heads, forward_dim=forward_dim, dropout=dropout) for _ in range(num_layers)
-        ])
+        output = self.linear(memory)
         
-        self.linear = nn.Linear(dim, dim)
+        return output
         
-    def forward(self, targets, memory):
-        seq_len, dim = targets.size(1), targets.size(2)
-        
-        outputs = targets + positional_encoding(dim, seq_len)
-        for layer in self.layers:
-            outputs  = layer(outputs, memory)
-        outputs = self.linear(outputs)
-        return torch.softmax(outputs, dim=-1)
-    
-class Transformer(nn.Module):
-    def  __init__(self,
-                  num_encode_layers = 6, 
-                  num_decoder_layers = 6,
-                  dim = 512, 
-                  num_heads = 8,
-                  forward_dim = 2048,
-                  dropout = 0.1,
-                  activation = nn.ReLU(),
-                  vocab_size = 10_000,
-                 
-                  ):
-        super().__init__()  
-        self.input_embedding = nn.Embedding(vocab_size, dim)
-        self.encoder = TransformerEncoder(
-            num_layers=num_encode_layers,
-            dim = dim,
-            num_heads = num_heads,
-            forward_dim= forward_dim,
-            dropout = dropout
-        )
-        
-        
-    def forward(self, inputs):
-        x = self.input_embedding(inputs)
-        return self.encoder(x)
-        
-class AttentionHead(nn.Module):
-    def __init__(self, in_dim, key_dim, value_dim):
-        super().__init__()
-        self.q = nn.Linear(in_dim, key_dim)
-        self.k = nn.Linear(in_dim, key_dim)
-        self.v = nn.Linear(in_dim, value_dim)
-    def forward(self, query, key, value):
-        q = self.q(query)
-        k = self.k(key)
-        v = self.v(value)
-        return scaled_dot_attention(q, k, v)
-class MultiHeadAttention(nn.Module):
-    def __init__(self, num_heads, in_dim, key_dim, value_dim):
-        super().__init__()
-        self.attention_heads = nn.ModuleList([
-            AttentionHead(in_dim, key_dim, value_dim) for i in range(num_heads)
-        ])
-        self.linear = nn.Linear(value_dim * num_heads, in_dim)
-        
-        
-    def forward(self, query, key, value):
-        out = [attention(query, key, value) for attention in self.attention_heads]
-        out = torch.cat(out, dim=-1)
-        out = self.linear(out)
-        return out
+
+
         
 class NewsClassificationDatataset(Dataset):
     def __init__(self, df, tokenizer, label_mapping = None):
@@ -216,38 +81,24 @@ class NewsClassificationDatataset(Dataset):
         return len(self.labels)
     def __getitem__(self, idx):
         text = self.texts[idx]
-        text_encoded = torch.tensor(self.tokenizer.encode(text).input_ids)
+        text_encoded = self.tokenizer.encode(text)
         label = self.labels[idx]
-        
+        text_encoded["input_ids"] = torch.tensor(text_encoded["input_ids"])
+        text_encoded["attention_mask"] = torch.tensor(text_encoded["attention_mask"])
         return text_encoded, label
-class Classifier(nn.Module):
-    def __init__(self, num_classes):
-        super().__init__()
-        self.transformer = Transformer()
-        self.pool = nn.AdaptiveAvgPool1d(1)
-        self.fc1 = nn.Linear(128, 256)
-        self.fc2 = nn.Linear(256, num_classes)
-    def forward(self, inputs):
-        batch_size = inputs.size(0)
-        x = self.transformer(inputs)
-        x = self.pool(x).squeeze(-1)
-        
-        x = F.dropout(x, p=0.1)
-        x = F.relu(self.fc1(x))
-        x = F.dropout(x, p=0.1)
-        x = self.fc2(x)
-        
-        return x
-        
 def train_epoch(model, loader, optimizer, criterion):
     model.train()
     losses = 0
     corrects = 0
     total = 0
+    batch_index = 0
     for inputs, labels in tqdm.auto.tqdm(loader):
-        inputs = inputs.to(device).long()
+        
+        inputs["input_ids"] = inputs["input_ids"].to(device).long()
+        inputs["attention_mask"] = inputs["attention_mask"].to(device).float()
+        
         labels = labels.to(device)
-        outputs = model(inputs)
+        outputs = model(inputs["input_ids"])
         
         loss = criterion(outputs, labels)
         losses += loss.item() * labels.size(0)
@@ -256,10 +107,13 @@ def train_epoch(model, loader, optimizer, criterion):
         corrects += (preds == labels).sum()
         
         total += labels.size(0)
+        if batch_index % 50 == 0:
+            print("{}/{} loss: {} acc: {}".format(batch_index, len(loader), losses/total, corrects/total))
         
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        batch_index += 1
     return losses/total, corrects / total
 
 def evaluate_model(model, loader, criterion):
@@ -269,9 +123,11 @@ def evaluate_model(model, loader, criterion):
     total = 0
     with torch.no_grad():
         for inputs, labels in tqdm.auto.tqdm(loader):
-            inputs = inputs.to(device).long()
+            inputs["input_ids"] = inputs["input_ids"].to(device).long()
+            inputs["attention_mask"] = inputs["attention_mask"].to(device).float()
+       
             labels = labels.to(device)
-            outputs = model(inputs)
+            outputs = model(inputs["input_ids"])
             
             loss = criterion(outputs, labels)
             losses += loss.item() * labels.size(0)
@@ -309,16 +165,16 @@ def main():
     validset = NewsClassificationDatataset(valid_df, tokenizer, label_mapping=trainset.label_mapping)
     
     
-    trainloader = DataLoader(trainset, batch_size = 64, shuffle=True)
-    validloader = DataLoader(validset, batch_size = 64, shuffle=False)
+    trainloader = DataLoader(trainset, batch_size = 256, shuffle=True)
+    validloader = DataLoader(validset, batch_size = 256, shuffle=False)
     
-    model = Classifier(len(trainset.label_mapping))
+    model = TransformerModel(num_classes= len(trainset.label_mapping))
+    IPython.embed()
+    # model = model.to(device)
+    # optimizer = torch.optim.SGD(model.parameters(),lr = 0.1)
+    # criterion = nn.CrossEntropyLoss()
     
-    model = model.to(device)
-    optimizer = torch.optim.SGD(model.parameters(),lr = 1e-3, momentum=0.9)
-    criterion = nn.CrossEntropyLoss()
-    
-    train_history, valid_history = train(model, trainloader, validloader, optimizer, criterion, 100)
+    # train_history, valid_history = train(model, trainloader, validloader, optimizer, criterion, 100)
     
 if __name__ == '__main__':
     main()
