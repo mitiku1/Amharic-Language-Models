@@ -6,6 +6,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 from amtokenizers import AmTokenizer
 from torch import nn
+from language_models.utils import get_train_args
 import tqdm
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -83,11 +84,14 @@ def evaluate_model(model, loader, criterion):
         
     return losses/total, corrects / total
 def main():
+    global args
+    
+    args = get_train_args()
     data_path = "An-Amharic-News-Text-classification-Dataset/data/Amharic News Dataset.csv"
     df = pd.read_csv(data_path)
     df = df.dropna(subset=["article", "category"])
     vocab_size = 10_000
-    EPOCHS = 10
+    EPOCHS = args.epochs
     
     tokenizer  = AmTokenizer(vocab_size, 5 , "byte_bpe", max_length=128)
     train_df, valid_df = train_test_split(df, test_size = 0.2, random_state = 1234)
@@ -102,7 +106,7 @@ def main():
         nn.Linear(vocab_size, len(trainset))
     )
     model = model.to(device)
-    optimizer = torch.optim.SGD(model.parameters(),lr = 1e-3, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(),lr = args.lr, momentum=0.9)
     criterion = nn.CrossEntropyLoss()
     for i in range(EPOCHS):
         train_loss, train_acc = train_epoch(model, trainloader, optimizer, criterion)

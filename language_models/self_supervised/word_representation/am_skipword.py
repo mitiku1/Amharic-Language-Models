@@ -16,6 +16,7 @@ import sklearn
 from sklearn.metrics.pairwise import cosine_similarity
 from amtokenizers import AmTokenizer
 import IPython
+from language_models.utils import get_train_args
 
 
 class WordEmbeddingDataset(tud.Dataset):
@@ -139,11 +140,7 @@ def main():
     df = pd.read_csv(data_path)
     df = df.dropna(subset=["article", "category"])
     
-    tokenizer =  AmTokenizer(vocab_size = vocab_size, min_frequence= 5 , tokenizer_name="word_piece")
-    
-    IPython.embed()
-    os._exit(0)
-    
+    tokenizer =  AmTokenizer(vocab_size = vocab_size, min_frequence= 5 , tokenizer_name="byte_bpe")
     
     dataset = WordEmbeddingDataset(df["article"].values, tokenizer)
     dataloader = tud.DataLoader(dataset,batch_size=1024,shuffle=True)

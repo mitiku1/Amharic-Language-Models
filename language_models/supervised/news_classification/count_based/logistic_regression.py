@@ -13,6 +13,7 @@ from sklearn.metrics import classification_report
 from sklearn.feature_extraction.text import TfidfVectorizer
 from torch import nn
 import torch
+from language_models.utils import get_train_args
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 normalization_mapping = {'[ሃኅኃሐሓኻ]': 'ሀ', '[ሑኁዅ]': 'ሁ', '[ኂሒኺ]': 'ሂ', 
@@ -94,8 +95,11 @@ def evaluate_model(model, loader, criterion):
     
 
 def main():
+    global args 
+    
+    args = get_train_args()
     dataset_path = "An-Amharic-News-Text-classification-Dataset/data/Amharic News Dataset.csv"
-    EPOCHS = 10
+    EPOCHS = args.epochs
     df = pd.read_csv(dataset_path)
     
     df = df.dropna(subset=["article", "category"])
@@ -136,7 +140,7 @@ def main():
         nn.Linear(X.shape[1], len(unique_labels))
     )
     model = model.to(device)
-    optimizer = torch.optim.SGD(model.parameters(),lr = 1e-3, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(),lr = args.lr, momentum=0.9)
     criterion = nn.CrossEntropyLoss()
     for i in range(EPOCHS):
         train_loss, train_acc = train_epoch(model, trainloader, optimizer, criterion)
