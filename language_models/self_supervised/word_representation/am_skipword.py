@@ -9,7 +9,7 @@ from collections import Counter
 import numpy as np
 import random
 import math
-
+import os
 import pandas as pd
 import scipy
 import sklearn
@@ -139,12 +139,14 @@ def main():
     df = pd.read_csv(data_path)
     df = df.dropna(subset=["article", "category"])
     
-    tokenizer =  AmTokenizer(vocab_size = vocab_size, min_frequence= 5 , tokenizer_name="byte_bpe")
-   
+    tokenizer =  AmTokenizer(vocab_size = vocab_size, min_frequence= 5 , tokenizer_name="word_piece")
+    
+    IPython.embed()
+    os._exit(0)
     
     
     dataset = WordEmbeddingDataset(df["article"].values, tokenizer)
-    dataloader = tud.DataLoader(dataset,batch_size=256,shuffle=True)
+    dataloader = tud.DataLoader(dataset,batch_size=1024,shuffle=True)
     
     model = EmbeddingModel(vocab_size,EMBEDDING_SIZE)
     optimizer = torch.optim.SGD(model.parameters(),lr=0.2)
